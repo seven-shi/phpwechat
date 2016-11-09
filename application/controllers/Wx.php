@@ -3,8 +3,24 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Wx extends CI_Controller {
-
-    public $wx;
+    
+    /**
+     * 微信登录地址
+     * @var string 
+     */
+    protected $wx_address;
+    
+    /**
+     * 微信登录的用户数组
+     * @var array 
+     */
+    protected $user;
+    
+    /**
+     * 微信登录的用户名
+     * @var type 
+     */
+    protected $username;
 
     public function __construct() {
         parent::__construct();
@@ -12,33 +28,80 @@ class Wx extends CI_Controller {
         $this->load->helper('cli');
         $this->load->library('Wechat');
     }
-
+    
     public function index() {
-        \Helper\CLI::echo_system('欢迎来到七七终端版微信');
+        //欢迎信息
+        $this->_hello();
+        
+        //登录二维码
+        $this->_qrcode();
+        
+        //登录用户
+        $this->_login();
+        
+        //读取消息
+        $this->_get_msg();
+        
+    }
+    
+    /**
+     * 欢迎信息
+     */
+    protected function _hello()
+    {
+        \Helper\CLI::echo_system('***********************************');
+        \Helper\CLI::echo_system('*****欢迎来到七七终端版微信********');
+        \Helper\CLI::echo_system('***********************************');
+    }
+    
+    /**
+     * 获取登录二维码
+     */
+    protected function _qrcode() {
         //访问下首页 并且创建cookie文件
         $this->wechat->get_index();
-        \Helper\CLI::echo_warning('开始登录,获取二维码,这可能需要五六秒的时间,请耐心等待');
-        $code = $this->wechat->get_qrcode_code();
-        if(strstr(PHP_OS, 'WIN'))
+        $get_login_status_num = 0;
+        $login = false;
+        while(true)
         {
-            $this->wechat->get_qrcode($code);
-        }
-        else
-        {
-            $this->_terminal_qrcode($this->wechat->generate_qrcode($code));
-        }
-
-        \Helper\CLI::echo_system('等待扫码','');
-        while (true) {
-            $wx_address = $this->wechat->get_login_status($code);
-            if ($wx_address !== false) {
-                break;
+            $get_login_status_num?
+            \Helper\CLI::echo_warning('二维码扫描等待超时 正在刷新二维码...'):
+            \Helper\CLI::echo_warning('开始登录,获取二维码,这可能需要五六秒的时间,请耐心等待');
+            $get_login_status_num = 0;//第二次运行的时候 初始化一下
+            $code = $this->wechat->get_qrcode_code();
+            if(strstr(PHP_OS, 'WIN'))
+            {
+                $file = $this->wechat->get_qrcode($code);
+                \Helper\CLI::echo_system('文件保存地址:'.$file);
             }
-            echo '.';
-            sleep(1);
+            else
+            {
+                $this->_terminal_qrcode($this->wechat->generate_qrcode($code));
+            }
+
+            \Helper\CLI::echo_system('等待扫码');
+            while (true) {
+                if(10 === $get_login_status_num)//超过十次就跳出 继续获取一个新的二维码
+                {
+                    break;
+                }
+                $this->wx_address = $this->wechat->get_login_status($code);
+                if ($this->wx_address !== false) {
+                    break 2;
+                }
+                echo '.';
+                $get_login_status_num++;
+                sleep(1);
+            }
         }
+    }
+    
+    /**
+     * 登录微信
+     */
+    protected function _login() {
         \Helper\CLI::echo_system('扫码成功,开始登录微信');
-        $success_code = $this->wechat->get_login_success_code($wx_address);
+        $success_code = $this->wechat->get_login_success_code($this->wx_address);
         if (!isset($success_code['ret'])) {
             exit('login error');
         }
@@ -47,14 +110,17 @@ class Wx extends CI_Controller {
         \Helper\CLI::echo_system('初始化成功,开始获取好友列表');
         $this->wechat->get_friend();
         \Helper\CLI::echo_system('好友列表获取成功,开始读取用户信息');
-        $user = $this->wechat->get_user();
-        $username = isset($user['NickName'])?$user['NickName']:'未知';
-        \Helper\CLI::echos('登录用户:'.$username);
-//        \Helper\CLI::echo_system('获取下消息状态');
-//        $this->wechat->get_wx_status_notify();
-        \Helper\CLI::echo_system('获取群用户信息');
-        //$this->wechat->get_group_user_list();
-        \Helper\CLI::echo_system('群用户获取成功,开始读取消息');
+        $this->user = $this->wechat->get_user();
+        $this->username = isset($this->user['NickName'])?$this->user['NickName']:'未知';
+        \Helper\CLI::echos('登录用户:'.$this->username);
+        //$this->wechat->get_wx_status_notify();
+    }
+    
+    /**
+     * 读取消息
+     */
+    protected function _get_msg() {
+        
         while (true) {
             $this->wechat->get_msg();
             $msg_status = $this->wechat->get_msg_status();
@@ -72,13 +138,13 @@ class Wx extends CI_Controller {
                 {
                     foreach($msg['AddMsgList'] as $item)
                     {
-                        if(isset($item['FromUserName']) and $item['FromUserName'] != $user['NickName'] )
+                        if(isset($item['FromUserName']) and $item['FromUserName'] != $this->user['NickName'] )
                         {
                             if(false !== $this->wechat->get_group_name($item['FromUserName']))
                             {
                                 $this->wechat->get_group_user_info($item['FromUserName']);
                                 $group_name = $this->wechat->get_group_name($item['FromUserName']);
-                                //$this->wechat->get_wx_status_notify($item['FromUserName']);这里报错了...不知道什么鬼
+                                $this->wechat->get_wx_status_notify($item['FromUserName']);
                                 $msg = explode(':<br/>', $item['Content']);
                                 $msg_username = $this->wechat->get_group_user($item['FromUserName'],$msg[0]);
                                 $msg_username = isset($msg_username['NickName'])?$msg_username['NickName']:'未知';
@@ -103,7 +169,7 @@ class Wx extends CI_Controller {
                 }
                 else
                 {
-                    file_put_contents('msg'.time().'.log', $msg,FILE_APPEND);
+                    //file_put_contents('msg'.time().'.log', $msg,FILE_APPEND);
                 }
                 
             }

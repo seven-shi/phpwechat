@@ -177,11 +177,15 @@ class WebWechat {
     }
 
     /**
-     * 获取二维码
+     * 获取二维码图片 保存到本地
+     * @param type $uuid
+     * @return 文件路径
      */
     public function get_qrcode($uuid) {
         $url = "https://login.weixin.qq.com/qrcode/" . $uuid;
-        file_put_contents($this->qrcode_path.time().'.png', $this->curl->curl_get($url));
+        $file = $this->qrcode_path.time().'.png';
+        file_put_contents($file, $this->curl->curl_get($url));
+        return $file;
     }
     
     /**
@@ -190,10 +194,10 @@ class WebWechat {
     public function generate_qrcode($uuid)
     {
         $url = "https://login.weixin.qq.com/l/{$uuid}";
-        include('qrcode/qrlib.php'); 
+        include_once('qrcode/qrlib.php'); 
 
         // generating 
-        $text = QRcode::text($url);
+        $text = \QRcode::text($url);
 
         return $text;
     }
@@ -300,7 +304,7 @@ class WebWechat {
             'Sid' => $this->login_success_data['wxsid'],
             'DeviceID' => 'e' . rand(100000000, 999999999) . rand(10000, 99999)
         ]];
-        $post['List'] = [['EncryChatRoomId'=>"",'UserName'=>$group_id]];
+        $post['List'] = [['ChatRoomId'=>"",'UserName'=>$group_id]];
         $post['Count'] = 1;
         $data = json_decode($this->curl->get_request_payload($url, $post),true);
         $this->group_id[$group_id] = $data['ContactList'][0]['NickName'];
@@ -399,11 +403,10 @@ class WebWechat {
             'FromUserName'=>$this->user_data['UserName'],
             'ToUserName' => $to_name?$to_name:$this->user_data['UserName']
         ];
-
-        $url = "https://wx.qq.com/cgi-bin/mmwebwx-bin/webwxstatusnotify?lang=zh_CN&pass_ticket=" . ($this->login_success_data['pass_ticket']);
+        $url = "https://wx.qq.com/cgi-bin/mmwebwx-bin/webwxstatusnotify";
         $data = $this->curl->get_request_payload($url, $post,false);
         $result = json_decode($data,true);
-
+        var_dump($result);
         $this->_error($result, true,'获取微信通知状态');
         $this->msg_id = $result['MsgID'];
     }
@@ -465,7 +468,7 @@ class WebWechat {
         $post = "r=" . time() . "384&skey={$this->login_success_data['skey']}&sid={$this->login_success_data['wxsid']}&uin={$this->login_success_data['wxuin']}&deviceid={$deviceid}&synckey={$this->synckey}";
         $url = "https://webpush.wx.qq.com/cgi-bin/mmwebwx-bin/synccheck?" . $post;
         $data = $this->curl->curl_get($url);
-        if(strpos($data, 'selector:"9"'))
+        if(strpos($data, 'retcode:"1101"'))
         {
             return 9;
         }
@@ -575,7 +578,7 @@ class WebWechat {
         {
             if($error_echo)
             {
-                echo $msg.' 返回错误:'.$data['BaseResponse']['ErrMsg'];
+                 WebWechatHelper::echos($msg.' 返回错误:'.$data['BaseResponse']['ErrMsg']);
             }
             else
             {
@@ -584,77 +587,4 @@ class WebWechat {
         }
         return true;
     }
-    
-    /**
-     * 发起一个get请求
-     * @param string $url
-     * @param boolean error_return  是否输出错误 如果不是 那么就抛出错误
-     * @return string
-     */
-    protected function _curl_get($url,$error_echo = true)
-    {
-        $ch = curl_init($url);
-        // 必须要来路域名
-        curl_setopt($ch, CURLOPT_REFERER, "https://wx.qq.com/");
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE);
-        curl_setopt($ch, CURLOPT_COOKIEFILE, $this->cookie_file);
-        curl_setopt($ch, CURLOPT_COOKIEJAR, $this->cookie_file);
-        $data = curl_exec($ch);
-        curl_close($ch);
-        if(false === $data)
-        {
-            if($error_echo)
-            {
-                throw new Exception('CURL ERROR :'.  curl_error($ch));
-            }
-            else
-            {
-                echo 'CURL ERROR :'.  curl_error($ch);
-            }
-        }
-        return $data;
-    }
-    
-    /**
-     * 模拟一个 request payload 请求
-     * @param string $url
-     * @param array $post post参数
-     * @param boolean error_return  是否输出错误 如果不是 那么就抛出错误
-     * @return string 正常的话 返回网页返回的信息
-     */
-    protected function _get_request_payload($url,$post,$error_echo = true) {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_REFERER, "https://wx.qq.com/");
-
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.71 Safari/537.36');
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/x-www-form-urlencoded'));
-
-        curl_setopt($ch, CURLOPT_COOKIEFILE, $this->cookie_file);
-        curl_setopt($ch, CURLOPT_COOKIEJAR, $this->cookie_file);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, is_array($post)?json_encode($post):$post);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE);
-        $data = curl_exec($ch);
-        curl_close($ch);
-        if(false === $data)
-        {
-            if($error_echo)
-            {
-                throw new Exception('CURL ERROR :'.  curl_error($ch));
-            }
-            else
-            {
-                echo 'CURL ERROR :'.  curl_error($ch);
-            }
-        }
-        return $data;
-    }
-    
 }
