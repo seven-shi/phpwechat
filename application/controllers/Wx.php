@@ -144,7 +144,7 @@ class Wx extends CI_Controller {
                             {
                                 $this->wechat->get_group_user_info($item['FromUserName']);
                                 $group_name = $this->wechat->get_group_name($item['FromUserName']);
-                                $this->wechat->get_wx_status_notify($item['FromUserName']);
+                                //$this->wechat->get_wx_status_notify($item['FromUserName']);
                                 $msg = explode(':<br/>', $item['Content']);
                                 $msg_username = $this->wechat->get_group_user($item['FromUserName'],$msg[0]);
                                 $msg_username = isset($msg_username['NickName'])?$msg_username['NickName']:'未知';
