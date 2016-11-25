@@ -10,5 +10,10 @@ if (!defined('BASEPATH'))
  */
 include 'phpWechat/vendor/autoload.php';
 class Wechat extends PhpWechat\WebWechat\WebWechat{
-    
+    public function __construct()
+    {
+        parent::__construct();
+        $this->set_cookie_path(FCPATH.'cookie/');
+        $this->set_qrcode_path(FCPATH.'qrcode/');
+    }
 }
